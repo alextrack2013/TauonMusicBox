@@ -41750,6 +41750,61 @@ def drop_file(target):
     mouse_down = False
     drag_mode = False
 
+class SmoothScroll:
+    def __init__(self):
+        self.y_aclu = 0
+        self.last = None
+
+        self.t1t = Timer()
+        self.t2t = Timer()
+        self.t_last = None
+        self.s = 0
+
+    def input(self, y):
+        gui.update += 1
+        if self.last is None:
+            self.last = y
+            return
+
+        if self.t1t.get() > 0.02:
+            self.t_last = y
+            self.t1t.set()
+
+        self.y_aclu += self.last - y
+        self.last = y
+
+
+
+    def lift(self):
+        print("lift")
+        if self.last and self.t_last and self.t1t.get() > 0:
+            s = (self.t_last - self.last) / self.t1t.get()
+            print(s)
+            self.s = s
+
+        self.t_last = None
+        self.last = None
+        gui.update += 1
+
+    def receive(self):
+        if self.y_aclu != 0 or self.s != 0:
+            gui.update += 1
+        y = self.y_aclu
+        self.y_aclu = 0
+
+        if self.t2t.get() > 0.3:
+            self.t2t.set()
+        y += self.s * self.t2t.get()
+        if self.s:
+
+            self.s *= 0.9 * self.t2t.get()
+            if abs(self.s) < 0.2:
+                self.s = 0
+        self.t2t.set()
+
+        return y
+
+smooth_scroll = SmoothScroll()
 
 if gui.restore_showcase_view:
     enter_showcase_view()
@@ -42204,6 +42259,12 @@ while pctl.running:
             gui.update += 1
             # print(input_text)
 
+        elif event.type == SDL_FINGERUP:
+            smooth_scroll.lift()
+        elif event.type == SDL_MULTIGESTURE:
+
+            if event.mgesture.numFingers == 2:
+                smooth_scroll.input(event.mgesture.y)
         elif event.type == SDL_MOUSEWHEEL:
             k_input = True
             power += 6
@@ -43492,10 +43553,13 @@ while pctl.running:
                             scroll_gallery_hide_timer.set()
                             gui.frame_callback_list.append(TestTimer(0.9))
 
-                        if prefs.gallery_row_scroll:
-                            gui.album_scroll_px -= mouse_wheel * (album_mode_art_size + album_v_gap)  # 90
-                        else:
-                            gui.album_scroll_px -= mouse_wheel * prefs.gallery_scroll_wheel_px
+                        # todo
+                        # if prefs.gallery_row_scroll:
+                        #     gui.album_scroll_px -= mouse_wheel * (album_mode_art_size + album_v_gap)  # 90
+                        # else:
+                        #     gui.album_scroll_px -= mouse_wheel * prefs.gallery_scroll_wheel_px
+                        gui.album_scroll_px += smooth_scroll.receive() * 1000
+
 
                         if gui.album_scroll_px < round(album_v_slide_value * -1):
                             gui.album_scroll_px = round(album_v_slide_value * -1)

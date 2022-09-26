@@ -127,6 +127,7 @@ if pyinstaller_mode: # and sys.platform == 'darwin':
 from sdl2 import *
 from sdl2.sdlimage import *
 
+SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, b'1')
 SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, b'1')
 SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, b"1")
 SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, b"0")
