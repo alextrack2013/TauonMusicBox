@@ -647,6 +647,7 @@ from t_modules.t_tagscan import Wav
 from t_modules.t_tagscan import M4a
 from t_modules.t_tagscan import parse_picture_block
 
+from t_modules.t_catbox import *
 from t_modules.t_stream import *
 from t_modules.t_lyrics import *
 from t_modules.t_themeload import *
@@ -1335,6 +1336,7 @@ class Prefs:  # Used to hold any kind of settings
 
         self.artist_list_style = 1
         self.discord_enable = False
+        self.discord_show_thumb = False
         self.stop_end_queue = False
 
         self.block_suspend = False
@@ -3830,6 +3832,7 @@ def save_prefs():
     cf.update_value("write-ratings-to-tag", prefs.write_ratings)
     cf.update_value("enable-spotify", prefs.spot_mode)
     cf.update_value("enable-discord-rpc", prefs.discord_enable)
+    cf.update_value("enable-discord-rpc-thumb", prefs.discord_show_thumb)
     cf.update_value("auto-search-lyrics", prefs.auto_lyrics)
     cf.update_value("shortcuts-ignore-keymap", prefs.use_scancodes)
     cf.update_value("alpha_key_activate_search", prefs.search_on_letter)
@@ -4130,6 +4133,8 @@ def load_prefs():
     prefs.spot_mode = cf.sync_add("bool", "enable-spotify", prefs.spot_mode, "Enable Spotify specific features")
     prefs.discord_enable = cf.sync_add("bool", "enable-discord-rpc", prefs.discord_enable,
                                        "Show track info in running Discord application")
+    prefs.discord_show_thumb = cf.sync_add("bool", "enable-discord-rpc-thumb", prefs.discord_show_thumb,
+                                       "Show current track thumbnail inside the rich presence")
     prefs.auto_lyrics = cf.sync_add("bool", "auto-search-lyrics", prefs.auto_lyrics,
                                     "Automatically search internet for lyrics when display is wanted")
 
@@ -23712,7 +23717,12 @@ x_menu.add(MenuItem("LFM", lastfm.toggle, last_fm_menu_deco, icon=listen_icon, s
 
 
 def discord_loop():
+    global prev_album
+    global prev_thumb_url
+    prev_album = None
+    prev_thumb_url = None
     prefs.discord_active = True
+    prefs.discord_show_thumb = True
 
     if not pctl.playing_ready():
         # show_message("Please start playing a track first")
@@ -23811,11 +23821,29 @@ def discord_loop():
             if state == 1:
                 # print("PLAYING: " + title)
                 # print(start_time)
+                thumb_url = ""
+                if not thumb_url and prefs.discord_show_thumb:
+                    source, offset = gall_ren.get_file_source(tr)
+                    if source:
+                        source_image = album_art_gen.get_source_raw(0, 0, tr, subsource=source)
+                        if album != prev_album:
+                            im = Image.open(source_image)
+                            if im.mode != "RGB":
+                                    im = im.convert("RGB")
+                            im.thumbnail((75, 75), Image.Resampling.LANCZOS)
+                            buff = io.BytesIO()
+                            im.save(buff, format="JPEG")
+                            buff.seek(0)
+                            thumb_url = upload_to_catbox(buff.read())
+ 
+                            prev_album = album
+                            prev_thumb_url = thumb_url
+
                 RPC.update(pid=pid,
                            state=album,
                            details=title,
                            start=int(start_time),
-                           large_image="tauon-standard", )
+                           large_image=prev_thumb_url or "tauon-standard", )
 
             else:
                 # print("Discord RPC - Stop")
@@ -23832,12 +23860,11 @@ def discord_loop():
                 break
 
     except:
-        # show_message("Error connecting to Discord", mode='error')
         gui.discord_status = "Error - Discord not running?"
         prefs.disconnect_discord = False
 
     prefs.discord_active = False
-
+    prefs.discord_show_thumb = False
 
 def hit_discord():
     if prefs.discord_enable and prefs.discord_allow and not prefs.discord_active:
@@ -28199,7 +28226,9 @@ class Over:
             y += 25 * gui.scale
             old = prefs.discord_enable
             prefs.discord_enable = self.toggle_square(x, y, prefs.discord_enable, _("Enable Discord Rich Presence"))
-
+            x += 250 * gui.scale
+            prefs.discord_show_thumb = self.toggle_square(x, y, prefs.discord_enable, _("Show track thumbnail"))
+            x -= 250 * gui.scale
             if flatpak_mode:
                 if self.button(x + 215 * gui.scale, y, _("?")):
                     show_message(_("For troubleshooting Discord RP"),
@@ -28209,9 +28238,11 @@ class Over:
                 if snap_mode:
                     show_message("Sorry, this feature is unavailable with snap", mode="error")
                     prefs.discord_enable = False
+                    prefs.discord_show_thumb = False
                 elif not discord_allow:
                     show_message("Missing dependency python-pypresence")
                     prefs.discord_enable = False
+                    prefs.discord_show_thumb = False
                 else:
                     hit_discord()
 
